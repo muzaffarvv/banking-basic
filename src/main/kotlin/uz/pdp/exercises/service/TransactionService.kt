@@ -11,6 +11,7 @@ import uz.pdp.exercises.enums.TransactionType
 import uz.pdp.exercises.exceptions.InsufficientBalanceException
 import uz.pdp.exercises.exceptions.InvalidOperationException
 import uz.pdp.exercises.exceptions.NotFoundException
+import uz.pdp.exercises.model.Account
 import uz.pdp.exercises.model.Transaction
 import java.math.BigDecimal
 import java.util.concurrent.ConcurrentHashMap
@@ -20,117 +21,80 @@ import java.util.concurrent.atomic.AtomicLong
 class TransactionService(
     private val accountService: AccountService,
     private val userService: UserService
-): BaseService<Transaction, Long> {
+) : BaseService<Transaction, Long> {
 
     private val storage = ConcurrentHashMap<Long, Transaction>()
     private val idGenerator = AtomicLong(1)
-    private val transferCommission = BigDecimal(0.01)
+    private val transferCommission = BigDecimal("0.01")
 
     fun deposit(dto: DepositDTO): TransactionResponseDTO {
         val account = accountService.findById(dto.accountId)
-
-        val newBalance = account.balance.add(dto.amount)
-        accountService.updateBalance(dto.accountId, newBalance)
-
-        val transaction = Transaction( // ###
-            id = idGenerator.andIncrement,
+        updateBalances(from = null, to = account, amount = dto.amount)
+        return recordTransaction(
             type = TransactionType.DEPOSIT,
             fromAccountId = null,
             toAccountId = dto.accountId,
             amount = dto.amount,
-            status = TransactionStatus.SUCCESS,
             description = dto.description
         )
-
-        storage[transaction.id] = transaction
-        return toDTO(transaction)
     }
 
     fun withdraw(dto: WithdrawDTO): TransactionResponseDTO {
         val account = accountService.findById(dto.accountId)
-        if (account.balance < dto.amount) {
-            throw InsufficientBalanceException(
-                "There is not enough money in the account. Available: ${account.balance}, Requirement: ${dto.amount}")
-        }
-        
-        val newBalance = account.balance.subtract(dto.amount)
-        accountService.updateBalance(dto.accountId, newBalance)
-        
-        val transaction = Transaction(
-            id = idGenerator.andIncrement,
+        checkEnoughBalance(account, dto.amount)
+        updateBalances(from = account, to = null, amount = dto.amount)
+        return recordTransaction(
             type = TransactionType.WITHDRAW,
             fromAccountId = dto.accountId,
             toAccountId = null,
             amount = dto.amount,
-            commission = BigDecimal.ZERO,
-            status = TransactionStatus.SUCCESS,
             description = dto.description
         )
-        
-        storage[transaction.id] = transaction
-        return toDTO(transaction)
     }
-    
+
     fun transfer(dto: TransferDTO): TransactionResponseDTO {
         if (dto.fromAccountId == dto.toAccountId) {
-            throw InvalidOperationException("Can't transfer money from the same account")
+            throw InvalidOperationException("Cannot transfer money to the same account")
         }
+
         val fromAccount = accountService.findById(dto.fromAccountId)
         val toAccount = accountService.findById(dto.toAccountId)
-        
+
         val fromUser = userService.findById(fromAccount.userId)
         val toUser = userService.findById(toAccount.userId)
 
-        val commission = if (!fromUser.isCorporate && toUser.isCorporate) {
+        val commission = if ((!fromUser.isCorporate && toUser.isCorporate) || (fromUser.isCorporate && toUser.isCorporate)) {
             dto.amount.multiply(transferCommission)
-        } else if (fromUser.isCorporate && toUser.isCorporate) {
-            dto.amount.multiply(transferCommission)
-        } else {
-            BigDecimal.ZERO
-        }
+        } else BigDecimal.ZERO
 
         val totalAmount = dto.amount.add(commission)
-        
-        if (fromAccount.balance < totalAmount) {
-            throw InsufficientBalanceException(
-                "There is not enough money in the account. Available: ${fromAccount.balance}, Requirement: $totalAmount")
-        }
-        
-        accountService.updateBalance(dto.fromAccountId, fromAccount.balance.subtract(totalAmount))
-        accountService.updateBalance(dto.toAccountId, toAccount.balance.add(totalAmount))
-        
-        val transaction = Transaction(
-            id = idGenerator.andIncrement,
+        checkEnoughBalance(fromAccount, totalAmount)
+        updateBalances(from = fromAccount, to = toAccount, amount = dto.amount, commission = commission)
+
+        return recordTransaction(
             type = TransactionType.TRANSFER,
             fromAccountId = dto.fromAccountId,
             toAccountId = dto.toAccountId,
             amount = dto.amount,
             commission = commission,
-            status = TransactionStatus.SUCCESS,
             description = dto.description
         )
-        storage[transaction.id] = transaction
-        return toDTO(transaction)
     }
 
     override fun create(entity: Transaction): Transaction {
-        val id = idGenerator.andIncrement
+        val id = idGenerator.getAndIncrement()
         val transaction = entity.copy(id = id)
         storage[id] = transaction
         return transaction
     }
 
-    override fun findById(id: Long): Transaction {
-        return storage[id] ?: throw NotFoundException("Transaction ID: $id not found")
-    }
+    override fun findById(id: Long): Transaction =
+        storage[id] ?: throw NotFoundException("Transaction ID: $id not found")
 
     override fun findAll(): List<Transaction> = storage.values.toList()
 
-    override fun update(
-        id: Long,
-        entity: Transaction
-    ): Transaction {
-      val existing = findById(id)
+    override fun update(id: Long, entity: Transaction): Transaction {
+        findById(id)
         val updated = entity.copy(id = id, updatedAt = java.time.LocalDateTime.now())
         storage[id] = updated
         return updated
@@ -142,17 +106,59 @@ class TransactionService(
 
     override fun exists(id: Long): Boolean = storage.containsKey(id)
 
-    private fun toDTO(transaction: Transaction): TransactionResponseDTO {
-        return TransactionResponseDTO(
-            id = transaction.id,
-            type = transaction.type.name,
-            fromAccountId = transaction.fromAccountId,
-            toAccountId = transaction.toAccountId,
-            amount = transaction.amount,
-            commission = transaction.commission,
-            status = transaction.status.name,
-            description = transaction.description
-        )
+    private fun checkEnoughBalance(account: Account, requiredAmount: BigDecimal) {
+        if (account.balance < requiredAmount) {
+            throw InsufficientBalanceException(
+                "There is not enough money in the account. Available: ${account.balance}, Requirement: $requiredAmount"
+            )
+        }
     }
 
+    private fun updateBalances(
+        from: Account?,
+        to: Account?,
+        amount: BigDecimal,
+        commission: BigDecimal = BigDecimal.ZERO
+    ) {
+        from?.let { accountService.updateBalance(
+            it.id,
+            it.balance.subtract(amount.add(commission))) }
+        to?.let { accountService.updateBalance(
+            it.id,
+            it.balance.add(amount)) }
+    }
+
+    private fun recordTransaction(
+        type: TransactionType,
+        fromAccountId: Long?,
+        toAccountId: Long?,
+        amount: BigDecimal,
+        commission: BigDecimal = BigDecimal.ZERO,
+        description: String? = null
+    ): TransactionResponseDTO {
+        val transaction = Transaction(
+            id = idGenerator.getAndIncrement(),
+            type = type,
+            fromAccountId = fromAccountId,
+            toAccountId = toAccountId,
+            amount = amount,
+            commission = commission,
+            status = TransactionStatus.SUCCESS,
+            description = description
+        )
+        storage[transaction.id] = transaction
+        return transaction.toDTO()
+    }
+
+    private fun Transaction.toDTO(): TransactionResponseDTO =
+        TransactionResponseDTO(
+            id = id,
+            type = type.name,
+            fromAccountId = fromAccountId,
+            toAccountId = toAccountId,
+            amount = amount,
+            commission = commission,
+            status = status.name,
+            description = description
+        )
 }

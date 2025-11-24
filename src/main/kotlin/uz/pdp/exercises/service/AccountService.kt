@@ -14,6 +14,7 @@ import java.util.concurrent.atomic.AtomicLong
 class AccountService(
     private val userService: UserService
 ) : BaseService<Account, Long> {
+
     private val storage = ConcurrentHashMap<Long, Account>()
     private val idGenerator = AtomicLong(1)
     private val userAccountIndex = ConcurrentHashMap<Long, MutableList<Long>>()
@@ -23,11 +24,10 @@ class AccountService(
 
     fun createAccount(userId: Long): Account {
         val user = userService.findById(userId)
-
-        val limit = if (user.isCorporate) corporateAccountLimit else regularAccountLimit
         val accounts = userAccountIndex.getOrPut(userId) { mutableListOf() }
+        val limit = if (user.isCorporate) corporateAccountLimit else regularAccountLimit
 
-        if (accounts.size < limit) {
+        if (accounts.size >= limit) {
             val userType = if (user.isCorporate) "Corporate" else "Regular"
             throw AccountLimitException(
                 "$userType user can open a maximum of $limit accounts. You already have ${accounts.size} accounts"
@@ -35,7 +35,7 @@ class AccountService(
         }
 
         val account = Account(
-            id = idGenerator.andIncrement,
+            id = idGenerator.getAndIncrement(),
             userId = userId,
             balance = BigDecimal.ZERO
         )
@@ -46,16 +46,15 @@ class AccountService(
     }
 
     override fun create(entity: Account): Account {
-        val id = idGenerator.andIncrement
+        val id = idGenerator.getAndIncrement()
         val account = entity.copy(id = id)
         storage[id] = account
         userAccountIndex.getOrPut(account.userId) { mutableListOf() }.add(id)
         return account
     }
 
-    override fun findById(id: Long): Account {
-        return storage[id] ?: throw NotFoundException("Account ID: $id not found")
-    }
+    override fun findById(id: Long): Account =
+        storage[id] ?: throw NotFoundException("Account ID: $id not found")
 
     override fun findAll(): List<Account> = storage.values.toList()
 
@@ -65,7 +64,7 @@ class AccountService(
     }
 
     override fun update(id: Long, entity: Account): Account {
-        val existingAccount = findById(id)
+        findById(id)
         val updated = entity.copy(id = id, updatedAt = LocalDateTime.now())
         storage[id] = updated
         return updated
@@ -85,5 +84,4 @@ class AccountService(
         storage[accountId] = updated
         return updated
     }
-
 }

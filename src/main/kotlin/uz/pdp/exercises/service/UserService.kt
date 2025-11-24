@@ -5,13 +5,14 @@ import uz.pdp.exercises.base.BaseService
 import uz.pdp.exercises.dto.UserDTO
 import uz.pdp.exercises.exceptions.DuplicateElementException
 import uz.pdp.exercises.exceptions.NotFoundException
-import uz.pdp.exercises.model.*
+import uz.pdp.exercises.model.User
 import java.time.LocalDateTime
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 
 @Service
 class UserService : BaseService<User, Long> {
+
     private val storage = ConcurrentHashMap<Long, User>()
     private val idGenerator = AtomicLong(1)
     private val usernameIndex = ConcurrentHashMap<String, Long>()
@@ -26,7 +27,7 @@ class UserService : BaseService<User, Long> {
         }
 
         val user = User(
-            id = idGenerator.andIncrement,
+            id = idGenerator.getAndIncrement(),
             username = dto.username,
             email = dto.email,
             isCorporate = dto.isCorporate
@@ -40,7 +41,7 @@ class UserService : BaseService<User, Long> {
     }
 
     override fun create(entity: User): User {
-        val id = idGenerator.andIncrement
+        val id = idGenerator.getAndIncrement()
         val user = entity.copy(id = id)
         storage[id] = user
         usernameIndex[user.username] = id
@@ -48,16 +49,13 @@ class UserService : BaseService<User, Long> {
         return user
     }
 
-    override fun findById(id: Long): User {
-        return storage[id] ?: throw NotFoundException("User ID: $id not found")
-    }
+    override fun findById(id: Long): User =
+        storage[id] ?: throw NotFoundException("User ID: $id not found")
 
-    override fun findAll(): List<User> {
-        return storage.values.toList()
-    }
+    override fun findAll(): List<User> = storage.values.toList()
 
     override fun update(id: Long, entity: User): User {
-        val existingUser = findById(id)
+        findById(id)
         val updated = entity.copy(id = id, updatedAt = LocalDateTime.now())
         storage[id] = updated
         return updated
@@ -69,7 +67,6 @@ class UserService : BaseService<User, Long> {
         usernameIndex.remove(user.username)
         emailIndex.remove(user.email)
     }
-
 
     override fun exists(id: Long): Boolean = storage.containsKey(id)
 }
