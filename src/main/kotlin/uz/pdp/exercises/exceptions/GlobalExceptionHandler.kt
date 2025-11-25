@@ -44,7 +44,7 @@ class GlobalExceptionHandler {
         val error = ErrorResponse(
             status = status.value(),
             error = status.reasonPhrase,
-            message = ex.message ?: "Unknown error"
+            message = ex.message ?: "Unknown error",
         )
 
         return ResponseEntity.status(status).body(error)

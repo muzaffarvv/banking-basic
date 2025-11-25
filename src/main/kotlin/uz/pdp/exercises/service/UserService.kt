@@ -28,8 +28,8 @@ class UserService : BaseService<User, Long> {
 
         val user = User(
             id = idGenerator.getAndIncrement(),
-            username = dto.username,
-            email = dto.email,
+            username = dto.username.toString(),
+            email = dto.email.toString(),
             isCorporate = dto.isCorporate
         )
 

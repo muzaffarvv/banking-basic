@@ -1,6 +1,9 @@
 package uz.pdp.exercises.controller
 
 import io.swagger.v3.oas.annotations.Operation
+import io.swagger.v3.oas.annotations.media.Content
+import io.swagger.v3.oas.annotations.media.ExampleObject
+import io.swagger.v3.oas.annotations.parameters.RequestBody
 import io.swagger.v3.oas.annotations.tags.Tag
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -11,7 +14,6 @@ import uz.pdp.exercises.model.User
 import uz.pdp.exercises.service.AccountService
 import uz.pdp.exercises.service.UserService
 
-
 @RestController
 @RequestMapping("/accounts")
 @Tag(name = "Account Management", description = "Account management API")
@@ -21,7 +23,24 @@ class AccountController(
 ) {
 
     @PostMapping
-    @Operation(summary = "Create a new account")
+    @Operation(
+        summary = "Create a new account",
+        description = "Create account for an existing user",
+        requestBody = RequestBody(
+            description = "User ID to create account for",
+            required = true,
+            content = [Content(
+                examples = [ExampleObject(
+                    name = "Create Account",
+                    value = """
+                        {
+                          "userId": 1
+                        }
+                    """
+                )]
+            )]
+        )
+    )
     fun createAccount(@RequestParam userId: Long): ResponseEntity<AccountResponseDTO> {
         val account = accountService.createAccount(userId)
         val user = userService.findById(account.userId)
@@ -50,5 +69,4 @@ class AccountController(
         balance = account.balance,
         username = user.username
     )
-
 }
