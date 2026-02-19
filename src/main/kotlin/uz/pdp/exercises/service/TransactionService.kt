@@ -54,7 +54,7 @@ class TransactionService(
 
     fun transfer(dto: TransferDTO): TransactionResponseDTO {
         if (dto.fromAccountId == dto.toAccountId) {
-            throw InvalidOperationException("Cannot transfer money to the same account")
+            throw InvalidOperationException("Can't transfer money to the same account")
         }
 
         val fromAccount = accountService.findById(dto.fromAccountId)
@@ -89,7 +89,7 @@ class TransactionService(
     }
 
     override fun findById(id: Long): Transaction =
-        storage[id] ?: throw NotFoundException("Transaction ID: $id not found")
+        storage[id] ?: throw NotFoundException("Transaction id: $id not found")
 
     override fun findAll(): List<Transaction> = storage.values.toList()
 
@@ -101,7 +101,7 @@ class TransactionService(
     }
 
     override fun delete(id: Long) {
-        storage.remove(id) ?: throw NotFoundException("Transaction ID: $id not found")
+        storage.remove(id) ?: throw NotFoundException("Transaction id: $id not found")
     }
 
     override fun exists(id: Long): Boolean = storage.containsKey(id)
