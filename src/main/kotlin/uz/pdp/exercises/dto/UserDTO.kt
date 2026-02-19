@@ -13,7 +13,7 @@ data class UserDTO(
 
     @field:NotBlank(message = "Email can't be blank")
     @field:Email(message = "Email must be valid")
-    @Schema(description = "Email of the user", example = "muzaffarvv@example.com", required = true)
+    @Schema(description = "Email of the user", example = "youremail@example.com", required = true)
     val email: String?,
 
     @Schema(description = "Is the user corporate", example = "false", required = false)
