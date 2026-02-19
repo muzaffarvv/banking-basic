@@ -6,7 +6,7 @@ import jakarta.validation.constraints.NotNull
 import java.math.BigDecimal
 
 data class DepositDTO(
-    @field:NotNull(message = "Account ID can't be null")
+    @field:NotNull(message = "Account id can't be null")
     @Schema(description = "ID of account to deposit into", example = "1")
     val accountId: Long,
 
